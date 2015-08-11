@@ -15,7 +15,10 @@ import com.google.api.services.drive.DriveScopes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
 
@@ -25,10 +28,11 @@ import java.util.Arrays;
 
 public class GoogleDriveConnector {
 
-    private final Drive driveService;
     private static final Logger LOG = LoggerFactory.getLogger(GoogleDriveConnector.class);
 
-    public GoogleDriveConnector(String serviceAccountEmail, File keyFile) throws GeneralSecurityException, IOException {
+    private final Drive driveService;
+
+    public GoogleDriveConnector(String serviceAccountEmail, File serviceAccountKeyFile) throws IOException, GeneralSecurityException {
         HttpTransport transport = GoogleNetHttpTransport.newTrustedTransport();
         JacksonFactory factory = new JacksonFactory();
         GoogleCredential credential = new GoogleCredential.Builder()
@@ -36,9 +40,9 @@ public class GoogleDriveConnector {
                 .setJsonFactory(factory)
                 .setServiceAccountId(serviceAccountEmail)
                 .setServiceAccountScopes(Arrays.asList(DriveScopes.DRIVE))
-                .setServiceAccountPrivateKeyFromP12File(keyFile)
+                .setServiceAccountPrivateKeyFromP12File(serviceAccountKeyFile)
                 .build();
-        driveService = new Drive.Builder(transport, factory, credential).build();
+        driveService = new Drive.Builder(transport, factory, credential).setApplicationName("DriveService").build();
     }
 
     public File getWorkbook(String fileId) throws IOException {
@@ -47,17 +51,12 @@ public class GoogleDriveConnector {
         GenericUrl url = new GenericUrl(downloadUrl);
 
         HttpResponse resp = driveService.getRequestFactory().buildGetRequest(url).execute();
-        byte[] buffer;
-        try (InputStream inStream = resp.getContent()) {
-            buffer = new byte[inStream.available()];
-            inStream.read(buffer);
-        }
-        resp.disconnect();
 
         final java.io.File tempFile = java.io.File.createTempFile(fileId, ".xlsx");
         try (OutputStream outStream = new FileOutputStream(tempFile)) {
-            outStream.write(buffer);
+            resp.download(outStream);
         }
+        resp.disconnect();
         return tempFile;
     }
 }
